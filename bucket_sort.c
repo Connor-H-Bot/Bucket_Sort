@@ -9,8 +9,6 @@
 #include <limits.h>
 #include <string.h>
 
-// Structures
-
 // Globals
 unsigned long long int problemsize;
 unsigned int thread_count;
@@ -19,15 +17,18 @@ omp_lock_t lock;
 // Functions
 double get_wall_seconds();
 void *emalloc(size_t size);
+void *emalloc_large(size_t size);
 void *erealloc(unsigned int *array, size_t new_size);
+void *erealloc_large(unsigned long long int *array, size_t new_size);
 int checkresults(unsigned int *problem_array);
 int cpu_cachesize();
 void shuffle_array(unsigned int *problem_array, size_t size);
 int compare(const void *a, const void *b);
 int compare_large(const void *a, const void *b);
 void *bucket_sort(unsigned int *problem_array);
-void bucket_sort_large(unsigned long long int *problem_array);
+void *bucket_sort_large(unsigned long long int *problem_array);
 void basic_load_balance(unsigned int *problem_array, unsigned int **buckets);
+void basic_load_balance_large(unsigned long long int *problem_array, unsigned long long int **buckets);
 void uniform_problem();
 void normal_problem();
 void exponential_problem();
@@ -56,6 +57,18 @@ void *emalloc(size_t size)
     return v;
 }
 
+// emalloc for 64 bit integers
+void *emalloc_large(size_t size)
+{
+    void *v = (unsigned long long int *)malloc(size * sizeof(unsigned long long int));
+    if (!v)
+    {
+        fprintf(stderr, "out of mem\n");
+        exit(EXIT_FAILURE);
+    }
+    return v;
+}
+
 // Realloc using parts of emalloc() code
 void *erealloc(unsigned int *array, size_t new_size)
 {
@@ -65,6 +78,20 @@ void *erealloc(unsigned int *array, size_t new_size)
     if (!v)
     {
         fprintf(stderr, "ERROR: Reallocation of memory failed\n");
+        exit(EXIT_FAILURE);
+    }
+    return v;
+}
+
+// Realloc using parts of emalloc() code for 64 bit integers
+void *erealloc_large(unsigned long long int *array, size_t new_size)
+{
+    // void *v = (unsigned int *)malloc(size * sizeof(unsigned int));
+    void *v = realloc(array, (new_size * sizeof(unsigned long long int)));
+    // buckets[j] = realloc(buckets[j], (buckets[j][0] + 1) * sizeof(unsigned int));
+    if (!v)
+    {
+        fprintf(stderr, "ERROR: Reallocation of memory for large ints failed\n");
         exit(EXIT_FAILURE);
     }
     return v;
@@ -152,7 +179,6 @@ inline int compare_large(const void *a, const void *b)
 // Bucket sorting algorithm for int (32 bit) sized problems
 void *bucket_sort(unsigned int *problem_array)
 {
-    omp_init_lock(&lock);
     omp_set_num_threads(thread_count);
 
     unsigned int **buckets = (unsigned int **)malloc(thread_count * sizeof(unsigned int *));
@@ -163,7 +189,7 @@ void *bucket_sort(unsigned int *problem_array)
     }
     basic_load_balance(problem_array, buckets);
 
-#pragma omp parallel shared(lock)
+#pragma omp parallel
     {
         int thread_id = omp_get_thread_num();
         unsigned int end_index = buckets[thread_id][0];
@@ -189,33 +215,56 @@ void *bucket_sort(unsigned int *problem_array)
             sorted_array[new_val] = buckets[i][j];
             new_val++;
         }
-        free(buckets[i]); // Freeing each bucket after usage
+        free(buckets[i]); // Free each bucket
     }
-    free(buckets); // Freeing the buckets array itself
-
-    sorted_array = erealloc(sorted_array, (new_val * sizeof(unsigned int)));
-
-    omp_destroy_lock(&lock);
+    free(buckets);                                                           // free bucket array
+    sorted_array = erealloc(sorted_array, (new_val * sizeof(unsigned int))); // reduce the size of sorted array in case it was too large
     return sorted_array;
 }
 
-// Bucket sort algorithm for ULLONG_MAX (64 bit) sized problems
-void bucket_sort_large(unsigned long long int *problem_array)
+// Bucket sort algorithm for 64 bit sized problems
+void *bucket_sort_large(unsigned long long int *problem_array)
 {
-    unsigned long long int bin_capacity = problemsize / thread_count;
-    omp_init_lock(&lock);
+    // unsigned long long int bin_capacity = problemsize / thread_count;
     omp_set_num_threads(thread_count);
+    unsigned long long int **buckets = (unsigned long long int **)malloc(thread_count * sizeof(unsigned long long int *));
+    if (buckets == NULL)
+    {
+        fprintf(stderr, "Error: Memory allocation for buckets failed.\n");
+        exit(EXIT_FAILURE);
+    }
+    basic_load_balance_large(problem_array, buckets);
 
-#pragma omp parallel shared(lock)
+#pragma omp parallel
     {
         int thread_id = omp_get_thread_num();
-        // unsigned int start_index = thread_id * bin_capacity;
-        unsigned long long int end_index = (thread_id == thread_count - 1) ? problemsize : (thread_id + 1) * bin_capacity;
-        // load balance
-        qsort(problem_array, end_index, sizeof(unsigned long long int), compare_large);
+        unsigned long long int end_index = buckets[thread_id][0];
+        qsort(buckets[thread_id] + 1, end_index - 1, sizeof(unsigned long long int), compare_large);
+#pragma omp barrier
     }
-    // free buckets and all memory associated with it
-    omp_destroy_lock(&lock);
+    unsigned long long int initial_size = 1;
+    unsigned long long int current_size = initial_size;
+    unsigned long long int *sorted_array = emalloc_large(current_size * sizeof(unsigned long long int));
+
+    unsigned long long int new_val = 0;
+    for (unsigned int i = 0; i < thread_count; i++)
+    {
+        unsigned int temp = buckets[i][0];
+        for (unsigned long long int j = 1; j < temp; j++)
+        {
+            if (new_val >= current_size)
+            {
+                current_size *= 2;
+                sorted_array = erealloc_large(sorted_array, current_size * sizeof(unsigned long long int));
+            }
+            sorted_array[new_val] = buckets[i][j];
+            new_val++;
+        }
+        free(buckets[i]); // Free each bucket
+    }
+    free(buckets);                                                                           // free bucket array
+    sorted_array = erealloc_large(sorted_array, (new_val * sizeof(unsigned long long int))); // reduce the size of sorted array in case it was too large
+    return sorted_array;
 }
 
 /*
@@ -255,8 +304,50 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
             }
         }
     }
-
     free(bucket_limits);
+    free(problem_array);
+}
+
+/*
+    Basic load balance large:
+        Break down the problem_array into N buckets, and return an array
+        containing pointers to each bucket.
+        Basic implementation does not know the highest value, so it
+        divides up the buckets assuming even distribution of 0 -> UINT64_MAX integers.
+        Same as the basic load balancing function, with functionality for 64 bit integers
+*/
+void basic_load_balance_large(unsigned long long int *problem_array, unsigned long long int **buckets)
+{
+    for (unsigned long long int i = 0; i < thread_count; i++)
+    {
+        buckets[i] = emalloc_large(2 * sizeof(unsigned long long int)); // Allocate space for at least one element plus the size
+        buckets[i][0] = 1;                                              // Set the length of the bucket to 1 initially
+    }
+
+    unsigned long long int bucket_size = UINT64_MAX / thread_count;
+    unsigned long long int *bucket_limits = emalloc_large(thread_count * sizeof(unsigned long long int));
+    for (unsigned int i = 0; i < thread_count; i++)
+    {
+        bucket_limits[i] = ((i == thread_count - 1) ? UINT64_MAX : (i + 1) * bucket_size);
+    }
+
+    for (unsigned long long int i = 0; i < problemsize; i++)
+    {
+        unsigned long long int temp = problem_array[i];
+        for (unsigned int j = 0; j < thread_count; j++)
+        {
+            if (temp <= bucket_limits[j])
+            {
+                unsigned int bucket_index = buckets[j][0];
+                buckets[j] = erealloc_large(buckets[j], (bucket_index + 1) * sizeof(unsigned long long int)); // Extend the bucket by one element
+                buckets[j][bucket_index] = temp;                                                              // Add the value to the bucket
+                buckets[j][0] += 1;                                                                           // Increase the bucket's length
+                break;
+            }
+        }
+    }
+    free(bucket_limits);
+    free(problem_array);
 }
 
 // Uniform distribution problem set
@@ -312,7 +403,7 @@ void normal_problem()
     printf("\nElements: %llu\nThreads: %d\nTime taken: %lf\n\n", problemsize, thread_count, timer);
 
     checkresults(sorted_array);
-    free(problem_array);
+    free(sorted_array);
 }
 
 // Exponential numbers problem set
@@ -341,22 +432,22 @@ void exponential_problem()
     }
 
     double timer = get_wall_seconds();
-    bucket_sort_large(exponential_array);
+    unsigned long long int *sorted_array = bucket_sort_large(exponential_array);
     timer = get_wall_seconds() - timer;
     printf("\nElements: %llu\nThreads: %d\nTime taken: %lf\n\n", problemsize, thread_count, timer);
 
     // Check results
     for (int i = 0; i < (problemsize - 1); i++)
     {
-        if (exponential_array[i] > exponential_array[i + 1])
+        if (sorted_array[i] > sorted_array[i + 1])
         {
             printf("Exponential array is not in ascending order. Sorting failed.\n");
-            free(exponential_array);
+            free(sorted_array);
             return;
         }
     }
     printf("Order of elements are OK.\n");
-    free(exponential_array);
+    free(sorted_array);
 }
 
 int main(int argc, char const *argv[])
