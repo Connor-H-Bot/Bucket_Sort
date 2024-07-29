@@ -164,17 +164,15 @@ inline int compare(const void *a, const void *b)
 
 // Integer comparison modified to handle unsigned long long ints, by @2501
 // https://stackoverflow.com/questions/36681906/c-qsort-doesnt-seem-to-work-with-unsigned-long
+// And modified with inspiration from the tutorialspoint version
+// https://www.tutorialspoint.com/c_standard_library/c_function_qsort.htm
 inline int compare_large(const void *a, const void *b)
-{ // needs optimisation
+{
     unsigned long long int arg1 = *(const unsigned long long int *)a;
     unsigned long long int arg2 = *(const unsigned long long int *)b;
-
-    if (arg1 < arg2)
-        return -1;
-    if (arg1 > arg2)
-        return 1;
-    return 0;
+    return (arg1 > arg2) - (arg1 < arg2);
 }
+
 
 // Bucket sorting algorithm for int (32 bit) sized problems
 void *bucket_sort(unsigned int *problem_array)
@@ -193,6 +191,7 @@ void *bucket_sort(unsigned int *problem_array)
     {
         int thread_id = omp_get_thread_num();
         unsigned int end_index = buckets[thread_id][0];
+        //printf("Bucket: %d size: %d\n", thread_id, end_index);
         qsort(buckets[thread_id] + 1, end_index - 1, sizeof(unsigned int), compare); // Sorting starts from index 1
 #pragma omp barrier
     }
@@ -282,11 +281,19 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
         buckets[i][0] = 1;                              // Set the length of the bucket to 1 initially
     }
 
-    unsigned int bucket_size = UINT32_MAX / thread_count;
+    unsigned int highest_num = 0;
+    // find the highest number in the problem array, and use it as the max_int
+    for (unsigned int i = 0; i < problemsize; i++){
+        if (problem_array[i] > highest_num){
+            highest_num = problem_array[i];
+        }
+    }
+    printf("Highest number: %d\n", highest_num);
+    unsigned int bucket_size = highest_num / thread_count;
     unsigned int *bucket_limits = emalloc(thread_count * sizeof(unsigned int));
     for (unsigned int i = 0; i < thread_count; i++)
     {
-        bucket_limits[i] = ((i == thread_count - 1) ? UINT32_MAX : (i + 1) * bucket_size);
+        bucket_limits[i] = ((i == thread_count - 1) ? highest_num : (i + 1) * bucket_size);
     }
 
     for (unsigned int i = 0; i < problemsize; i++)
@@ -303,6 +310,10 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
                 break;
             }
         }
+    }
+    for (int i = 0; i < thread_count; i++)
+    {
+        printf("Bucket: %d size: %d\n", i, buckets[i][0]);
     }
     free(bucket_limits);
     free(problem_array);
@@ -324,11 +335,18 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
         buckets[i][0] = 1;                                              // Set the length of the bucket to 1 initially
     }
 
-    unsigned long long int bucket_size = UINT64_MAX / thread_count;
+    unsigned long long int highest_num = 0;
+        // find the highest number in the problem array, and use it as the max_int
+    for (unsigned long long int i = 0; i < problemsize; i++){
+        if (problem_array[i] > highest_num){
+            highest_num = problem_array[i];
+        }
+    }
+    unsigned long long int bucket_size = highest_num / thread_count;
     unsigned long long int *bucket_limits = emalloc_large(thread_count * sizeof(unsigned long long int));
     for (unsigned int i = 0; i < thread_count; i++)
     {
-        bucket_limits[i] = ((i == thread_count - 1) ? UINT64_MAX : (i + 1) * bucket_size);
+        bucket_limits[i] = ((i == thread_count - 1) ? highest_num : (i + 1) * bucket_size);
     }
 
     for (unsigned long long int i = 0; i < problemsize; i++)
@@ -345,6 +363,10 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
                 break;
             }
         }
+    }
+    for (int i = 0; i < thread_count; i++)
+    {
+        printf("Bucket: %d size: %lld\n", i, buckets[i][0]);
     }
     free(bucket_limits);
     free(problem_array);
