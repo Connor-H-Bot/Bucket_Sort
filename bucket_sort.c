@@ -173,7 +173,6 @@ inline int compare_large(const void *a, const void *b)
     return (arg1 > arg2) - (arg1 < arg2);
 }
 
-
 // Bucket sorting algorithm for int (32 bit) sized problems
 void *bucket_sort(unsigned int *problem_array)
 {
@@ -191,7 +190,7 @@ void *bucket_sort(unsigned int *problem_array)
     {
         int thread_id = omp_get_thread_num();
         unsigned int end_index = buckets[thread_id][0];
-        //printf("Bucket: %d size: %d\n", thread_id, end_index);
+        // printf("Bucket: %d size: %d\n", thread_id, end_index);
         qsort(buckets[thread_id] + 1, end_index - 1, sizeof(unsigned int), compare); // Sorting starts from index 1
 #pragma omp barrier
     }
@@ -282,13 +281,36 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
     }
 
     unsigned int highest_num = 0;
-    // find the highest number in the problem array, and use it as the max_int
-    for (unsigned int i = 0; i < problemsize; i++){
-        if (problem_array[i] > highest_num){
-            highest_num = problem_array[i];
+    omp_set_num_threads(thread_count);
+    unsigned int highest_numbers[thread_count];
+    unsigned int problem_size_per_thread = problemsize / thread_count;
+
+#pragma omp parallel
+    {
+        int thread_id = omp_get_thread_num();
+        unsigned int start_index = thread_id * problem_size_per_thread;
+        unsigned int end_index = (thread_id == thread_count - 1) ? problemsize : (thread_id + 1) * problem_size_per_thread;
+        unsigned int highest_num_thread = 0;
+        for (unsigned int i = start_index; i < end_index; i++)
+        {
+            if (problem_array[i] > highest_num_thread)
+            {
+                highest_num_thread = problem_array[i];
+            }
+        }
+        highest_numbers[thread_id] = highest_num_thread;
+#pragma omp barrier
+    }
+
+    for (int i = 0; i < thread_count; i++)
+    {
+        if (highest_numbers[i] > highest_num)
+        {
+            highest_num = highest_numbers[i];
         }
     }
-    printf("Highest number: %d\n", highest_num);
+
+    // printf("Highest number: %d\n", highest_num);
     unsigned int bucket_size = highest_num / thread_count;
     unsigned int *bucket_limits = emalloc(thread_count * sizeof(unsigned int));
     for (unsigned int i = 0; i < thread_count; i++)
@@ -336,9 +358,31 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
     }
 
     unsigned long long int highest_num = 0;
-        // find the highest number in the problem array, and use it as the max_int
-    for (unsigned long long int i = 0; i < problemsize; i++){
-        if (problem_array[i] > highest_num){
+    omp_set_num_threads(thread_count);
+    unsigned long long int highest_numbers[thread_count];
+    unsigned long long int problem_size_per_thread = problemsize / thread_count;
+
+#pragma omp parallel
+    {
+        int thread_id = omp_get_thread_num();
+        unsigned long long int start_index = thread_id * problem_size_per_thread;
+        unsigned long long int end_index = (thread_id == thread_count - 1) ? problemsize : (thread_id + 1) * problem_size_per_thread;
+        unsigned long long int highest_num_thread = 0;
+        for (unsigned long long int i = start_index; i < end_index; i++)
+        {
+            if (problem_array[i] > highest_num_thread)
+            {
+                highest_num_thread = problem_array[i];
+            }
+        }
+        highest_numbers[thread_id] = highest_num_thread;
+#pragma omp barrier
+    }
+
+    for (unsigned long long int i = 0; i < problemsize; i++)
+    {
+        if (problem_array[i] > highest_num)
+        {
             highest_num = problem_array[i];
         }
     }
