@@ -12,7 +12,6 @@
 // Globals
 unsigned long long int problemsize;
 unsigned int thread_count;
-omp_lock_t lock;
 
 // Functions
 double get_wall_seconds();
@@ -135,7 +134,7 @@ int cpu_cachesize()
         sscanf(path, "%d %d", &cache_sizes[0], &cache_sizes[1]);
     }
     pclose(fp);
-
+    fp = NULL;
     return (cache_sizes[0] < cache_sizes[1]) ? cache_sizes[1] : cache_sizes[0];
 }
 
@@ -190,33 +189,28 @@ void *bucket_sort(unsigned int *problem_array)
     {
         int thread_id = omp_get_thread_num();
         unsigned int end_index = buckets[thread_id][0];
-        // printf("Bucket: %d size: %d\n", thread_id, end_index);
         qsort(buckets[thread_id] + 1, end_index - 1, sizeof(unsigned int), compare); // Sorting starts from index 1
 #pragma omp barrier
     }
 
-    unsigned int initial_size = 1;
-    unsigned int current_size = initial_size;
-    unsigned int *sorted_array = emalloc(current_size * sizeof(unsigned int));
+    // merge all buckets together
+    unsigned int *sorted_array = emalloc(1 * sizeof(unsigned int));
+    unsigned int array_index = 0;
+    unsigned int temp;
 
-    unsigned int new_val = 0;
     for (unsigned int i = 0; i < thread_count; i++)
     {
-        unsigned int temp = buckets[i][0];
-        for (unsigned int j = 1; j < temp; j++)
+        temp = buckets[i][0];
+        if (temp > 1)
         {
-            if (new_val >= current_size)
-            {
-                current_size *= 2;
-                sorted_array = erealloc(sorted_array, current_size * sizeof(unsigned int));
-            }
-            sorted_array[new_val] = buckets[i][j];
-            new_val++;
+            sorted_array = erealloc(sorted_array, (array_index + temp - 1) * sizeof(unsigned int));
+            memcpy(&sorted_array[array_index], &buckets[i][1], (temp - 1) * sizeof(unsigned int));
+            array_index += temp - 1;
         }
-        free(buckets[i]); // Free each bucket
+        free(buckets[i]);
     }
-    free(buckets);                                                           // free bucket array
-    sorted_array = erealloc(sorted_array, (new_val * sizeof(unsigned int))); // reduce the size of sorted array in case it was too large
+    free(buckets);
+
     return sorted_array;
 }
 
@@ -240,28 +234,25 @@ void *bucket_sort_large(unsigned long long int *problem_array)
         qsort(buckets[thread_id] + 1, end_index - 1, sizeof(unsigned long long int), compare_large);
 #pragma omp barrier
     }
-    unsigned long long int initial_size = 1;
-    unsigned long long int current_size = initial_size;
-    unsigned long long int *sorted_array = emalloc_large(current_size * sizeof(unsigned long long int));
 
-    unsigned long long int new_val = 0;
+    // merge all buckets together
+    unsigned long long int *sorted_array = emalloc_large(1 * sizeof(unsigned long long int));
+    unsigned long long int array_index = 0;
+    unsigned long long int temp;
+
     for (unsigned int i = 0; i < thread_count; i++)
     {
-        unsigned int temp = buckets[i][0];
-        for (unsigned long long int j = 1; j < temp; j++)
+        temp = buckets[i][0];
+        if (temp > 1)
         {
-            if (new_val >= current_size)
-            {
-                current_size *= 2;
-                sorted_array = erealloc_large(sorted_array, current_size * sizeof(unsigned long long int));
-            }
-            sorted_array[new_val] = buckets[i][j];
-            new_val++;
+            sorted_array = erealloc_large(sorted_array, (array_index + temp - 1) * sizeof(unsigned long long int));
+            memcpy(&sorted_array[array_index], &buckets[i][1], (temp - 1) * sizeof(unsigned long long int));
+            array_index += temp - 1;
         }
-        free(buckets[i]); // Free each bucket
+        free(buckets[i]);
     }
-    free(buckets);                                                                           // free bucket array
-    sorted_array = erealloc_large(sorted_array, (new_val * sizeof(unsigned long long int))); // reduce the size of sorted array in case it was too large
+    free(buckets);
+
     return sorted_array;
 }
 
@@ -282,7 +273,7 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
 
     unsigned int highest_num = 0;
     omp_set_num_threads(thread_count);
-    unsigned int highest_numbers[thread_count];
+    unsigned int *highest_numbers = emalloc(thread_count);
     unsigned int problem_size_per_thread = problemsize / thread_count;
 
 #pragma omp parallel
@@ -302,6 +293,7 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
 #pragma omp barrier
     }
 
+    // select the highest number from the list
     for (int i = 0; i < thread_count; i++)
     {
         if (highest_numbers[i] > highest_num)
@@ -309,8 +301,8 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
             highest_num = highest_numbers[i];
         }
     }
+    free(highest_numbers);
 
-    // printf("Highest number: %d\n", highest_num);
     unsigned int bucket_size = highest_num / thread_count;
     unsigned int *bucket_limits = emalloc(thread_count * sizeof(unsigned int));
     for (unsigned int i = 0; i < thread_count; i++)
@@ -318,14 +310,17 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
         bucket_limits[i] = ((i == thread_count - 1) ? highest_num : (i + 1) * bucket_size);
     }
 
+    // Move elements from the problem array into the bucket
+    unsigned int temp;
+    unsigned int bucket_index;
     for (unsigned int i = 0; i < problemsize; i++)
     {
-        unsigned int temp = problem_array[i];
+        temp = problem_array[i];
         for (unsigned int j = 0; j < thread_count; j++)
         {
             if (temp <= bucket_limits[j])
             {
-                unsigned int bucket_index = buckets[j][0];
+                bucket_index = buckets[j][0];
                 buckets[j] = erealloc(buckets[j], (bucket_index + 1) * sizeof(unsigned int)); // Extend the bucket by one element
                 buckets[j][bucket_index] = temp;                                              // Add the value to the bucket
                 buckets[j][0] += 1;                                                           // Increase the bucket's length
@@ -333,10 +328,17 @@ void basic_load_balance(unsigned int *problem_array, unsigned int **buckets)
             }
         }
     }
-    for (int i = 0; i < thread_count; i++)
+
+    // second pass to check bucket distribution and shift them if they are unchanged.
+    /*
+        move through buckets and decide what the inbalance is (buckets should be +- 20% of the bucket size)
+        identify buckets that are, and buckets that are not in the range
+    */
+    for (unsigned int j = 0; j < thread_count; j++)
     {
-        printf("Bucket: %d size: %d\n", i, buckets[i][0]);
+        printf("Bucket: %d Bucket limits: %d\n", j, buckets[j][0]);
     }
+
     free(bucket_limits);
     free(problem_array);
 }
@@ -359,7 +361,8 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
 
     unsigned long long int highest_num = 0;
     omp_set_num_threads(thread_count);
-    unsigned long long int highest_numbers[thread_count];
+    // unsigned long long int highest_numbers[thread_count]; // for some reason this is generating a set but not used warning
+    unsigned long long int *highest_numbers = emalloc_large(thread_count);
     unsigned long long int problem_size_per_thread = problemsize / thread_count;
 
 #pragma omp parallel
@@ -393,14 +396,17 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
         bucket_limits[i] = ((i == thread_count - 1) ? highest_num : (i + 1) * bucket_size);
     }
 
+    unsigned long long int temp;
+    unsigned long long int bucket_index;
+
     for (unsigned long long int i = 0; i < problemsize; i++)
     {
-        unsigned long long int temp = problem_array[i];
+        temp = problem_array[i];
         for (unsigned int j = 0; j < thread_count; j++)
         {
             if (temp <= bucket_limits[j])
             {
-                unsigned int bucket_index = buckets[j][0];
+                bucket_index = buckets[j][0];
                 buckets[j] = erealloc_large(buckets[j], (bucket_index + 1) * sizeof(unsigned long long int)); // Extend the bucket by one element
                 buckets[j][bucket_index] = temp;                                                              // Add the value to the bucket
                 buckets[j][0] += 1;                                                                           // Increase the bucket's length
@@ -408,10 +414,21 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
             }
         }
     }
-    for (int i = 0; i < thread_count; i++)
+
+    for (unsigned int j = 0; j < thread_count; j++)
     {
-        printf("Bucket: %d size: %lld\n", i, buckets[i][0]);
+        printf("Bucket: %d Bucket limits: %llu\n", j, buckets[j][0]);
     }
+
+    // second pass to check bucket distribution and shift them if they are unchanged.
+    /*
+        move through buckets and decide what the inbalance is (buckets should be +- 20% of the bucket size)
+        identify buckets that are, and buckets that are not in the range
+        - count buckets which are empty
+        - use it as the base for a load distribution (if this occurs, it is likely the problem is exponential)
+        - 
+    */
+
     free(bucket_limits);
     free(problem_array);
 }
