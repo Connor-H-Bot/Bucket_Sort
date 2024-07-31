@@ -426,8 +426,81 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
         identify buckets that are, and buckets that are not in the range
         - count buckets which are empty
         - use it as the base for a load distribution (if this occurs, it is likely the problem is exponential)
-        - 
+        -
+        count empty buckets
+        count fullest bucket
+        shift buckets not full to the end
+        divide the biggest bucket accross small buckets
+        programatically:
+        get empty buckets
+        shift fuller buckets towards the end
+        have biggest bucket (first if exponential) divide capacity accross the X empty buckets (which should be placed next to it)
     */
+    printf("\n\n");
+    int empty_buckets = 0;
+    for (int i = (thread_count - 1); i > 1; i--)
+    {
+        // move backwards through the list and once an empty bucket is found:
+        // swap places with its nearest full bucket (make sure nearest bucket is not the first one)
+        if (buckets[i][0] == 1) // empty bucket found
+        {
+            for (int j = (i - 1); j > 0; j--) // move backwards through the list to find the next full bucket to swap with
+            {
+                if (buckets[j][0] != 1) // found the next non-empty bucket
+                {
+                    unsigned long long int *temp = buckets[j]; // swap them
+                    buckets[j] = buckets[i];
+                    buckets[i] = temp;
+                    empty_buckets++;
+                    break; // exit the inner loop after swapping
+                }
+            }
+        }
+    }
+    // now loop through the first bucket which is full?
+    unsigned long long int highest_number = 0;
+    for (unsigned long long int i = 0; i < (buckets[0][0] - 1); i++)
+    {
+        if (buckets[0][i] > highest_number)
+        {
+            highest_number = buckets[0][i];
+        }
+    }
+
+    unsigned long long int chunk_size = highest_number / (empty_buckets + 1);
+    unsigned long long int *bucket_limits_2 = emalloc_large((empty_buckets + 1) * sizeof(unsigned long long int));
+    for (unsigned int i = 0; i < (empty_buckets + 1); i++)
+    {
+        bucket_limits_2[i] = ((i == empty_buckets) ? highest_num : (i + 1) * chunk_size);
+    }
+    // copy everything from b0 into a new bucket, make b0 0, and move everything back accross like the first implementation
+    unsigned long long int *holding_bucket = emalloc_large((buckets[0][0]) * sizeof(unsigned long long int));
+    memcpy(&holding_bucket, &buckets[0], (buckets[0][0]) * sizeof(unsigned int));
+    buckets[i] = erealloc_large(buckets[i], (2 * sizeof(unsigned long long int))); // Allocate space for at least one element plus the size
+    // erealloc_large(buckets[j], (bucket_index + 1) * sizeof(unsigned long long int)); 
+    buckets[i][0] = 1;    
+
+    for (unsigned long long int i = 1; i < buckets[0][0]; i++) // start going through the full bucket (1st)
+    {
+        // reallocate elements from bucket0 accross b0-bempty_buckets 
+        temp = holding_bucket[i];
+        for (unsigned int j = 0; j < empty_buckets; j++)
+        {
+            if (temp <= bucket_limits_2[j])
+            {
+                bucket_index = buckets[j][0];
+                buckets[j] = erealloc_large(buckets[j], (bucket_index + 1) * sizeof(unsigned long long int)); // Extend the bucket by one element
+                buckets[j][bucket_index] = temp;                                                              // Add the value to the bucket
+                buckets[j][0] += 1;                                                                           // Increase the bucket's length
+                break;
+            }
+        }
+    }
+
+    for (unsigned int j = 0; j < thread_count; j++)
+    {
+        printf("Bucket: %d Bucket limits: %llu\n", j, buckets[j][0]);
+    }
 
     free(bucket_limits);
     free(problem_array);
