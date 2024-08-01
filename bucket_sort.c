@@ -485,18 +485,19 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
             buckets[i][0] = 1;
         }
 
-        // Perform the second pass and insert elements into their more balanced respective buckets
+        // Perform the second pass and insert elements into better balanced buckets
         for (unsigned long long int i = 1; i < bucket_max; i++)
         {
             temp = holding_bucket[i];
             for (unsigned int j = 0; j <= empty_buckets; j++)
-            {
+            { 
                 if (temp <= bucket_limits_2[j])
                 {
+                    // When a suitable bucket is found, extend its length and incrememnt its counter
                     bucket_index = buckets[j][0];
-                    buckets[j] = erealloc_large(buckets[j], (bucket_index + 1) * sizeof(unsigned long long int)); // Extend the bucket by one element
-                    buckets[j][bucket_index] = temp;                                                              // Add the value to the bucket
-                    buckets[j][0] += 1;                                                                           // Increase the bucket's length
+                    buckets[j] = erealloc_large(buckets[j], (bucket_index + 1) * sizeof(unsigned long long int)); 
+                    buckets[j][bucket_index] = temp;
+                    buckets[j][0] += 1;
                     break;
                 }
             }
