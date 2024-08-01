@@ -449,7 +449,7 @@ void basic_load_balance_large(unsigned long long int *problem_array, unsigned lo
 
     // If there is an empty bucket perform a second pass load distribution (problem is assumed to be exponential if this occurs)
     // WARNING: This produces significant performance degradation for 50000000+ sized problems
-    if (empty_buckets > 0)
+    if ((empty_buckets > 0) && (problemsize < 6000000))
     {
         // Loop through the first bucket to find its highest number
         unsigned long long int highest_number = 0;
