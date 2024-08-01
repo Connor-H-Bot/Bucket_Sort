@@ -104,7 +104,7 @@ int checkresults(unsigned int *problem_array)
         if (problem_array[i] > problem_array[i + 1])
         {
             printf("Array is not in ascending order. Sorting failed at index: %u\n", i);
-            for (unsigned int j = i; j < (i + 10); j++)
+            for (unsigned int j = i; j < ((i + 10 < (problemsize - 1)) ? i + 10 : i); j++)
             {
                 printf("Next ints: %u\n", problem_array[j]);
             }
