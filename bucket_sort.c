@@ -513,7 +513,7 @@ void uniform_problem()
 {
     printf("\nUniform distribution problem\n");
     unsigned int cachesize = cpu_cachesize();
-    unsigned int uints_max = cachesize * 26214; // 26,214 = 80% of (1MiB / sizeof(uint_MAX))
+    unsigned int uints_max = cachesize * 209715; // 209,715 = 80% of (1MiB / sizeof(uint_MAX))
     if (problemsize > uints_max)
     {
         printf("WARNING: %llu is a larger problem size than the guarenteed cache limit of %d UINT_MAX's. \nThis may result in poor performance. \n", problemsize, uints_max);
@@ -540,7 +540,7 @@ void normal_problem()
 {
     printf("\nNormal randomisation problem\n");
     unsigned int cachesize = cpu_cachesize();
-    unsigned int uints_max = cachesize * 26214; // 26,214 = 80% of (1MiB / sizeof(uint_MAX))
+    unsigned int uints_max = cachesize * 209715; // 209,715 = 80% of (1MiB / sizeof(uint_MAX))
     if (problemsize > uints_max)
     {
         printf("WARNING: %llu is a larger problem size than the guarenteed cache limit of %d UINT_MAX's. \nThis may result in poor performance. \n", problemsize, uints_max);
@@ -569,7 +569,7 @@ void exponential_problem()
 {
     printf("\nExponential distribution problem\n");
     int cachesize = cpu_cachesize();
-    int ulongints_max = cachesize * 13100; // 13,100 = 80% of (1MiB / sizeof(ulong_MAX)
+    int ulongints_max = cachesize * 104857; // 104,857 = 80% of (1MiB / sizeof(ulong_MAX)
     if (problemsize > ulongints_max)
     {
         printf("WARNING: %llu is a larger problem size than the guarenteed cache limit of %d ULLONG_MAX's. \nThis may result in poor performance. \n", problemsize, ulongints_max);
