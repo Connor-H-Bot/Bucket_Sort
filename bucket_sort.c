@@ -600,10 +600,6 @@ void exponential_problem()
         if (sorted_array[i] > sorted_array[i + 1])
         {
             printf("Exponential array is not in ascending order. Sorting failed at index: %llu\n", i);
-            // for (unsigned long long int j = i; j < (i + 10); j++)
-            //{
-            //    printf("Next ints: %llu\n", exponential_array[j]);
-            //}
             free(sorted_array);
             return;
         }
